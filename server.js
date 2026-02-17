@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
 const path = require('path');
+const rateLimit = require('express-rate-limit');
+const compression = require('compression');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -71,13 +73,37 @@ function categorize(article) {
   return 'General';
 }
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Gzip / deflate all responses
+app.use(compression());
+
+// Security headers
+app.use((req, res, next) => {
+  res.removeHeader('X-Powered-By');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
+  next();
+});
+
+// Rate limiting: max 30 requests per IP per minute on the API
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait before refreshing again.' },
+});
+app.use('/api/', apiLimiter);
+
+// Serve static files with 24-hour cache for assets
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '1d',
+  etag: true,
+}));
 
 app.get('/api/news', async (req, res) => {
   if (!API_KEY) {
-    return res.status(500).json({
-      error: 'NEWSAPI_KEY is not set. Please create a .env file with your NewsAPI key.',
-    });
+    return res.status(500).json({ error: 'News service is not configured.' });
   }
 
   const sortBy = ['popularity', 'publishedAt'].includes(req.query.sortBy)
@@ -93,6 +119,7 @@ app.get('/api/news', async (req, res) => {
   const cached = cache.get(cacheKey);
 
   if (!force && cached && now - cached.timestamp < CACHE_TTL) {
+    res.setHeader('Cache-Control', 'no-store');
     return res.json({ articles: cached.data, cached: true });
   }
 
@@ -105,10 +132,12 @@ app.get('/api/news', async (req, res) => {
       `&language=en` +
       `&sortBy=${sortBy}` +
       `&from=${from}` +
-      `&pageSize=40` +
-      `&apiKey=${API_KEY}`;
+      `&pageSize=40`;
 
-    const response = await fetch(url);
+    // Send API key in header instead of query string to keep it out of logs
+    const response = await fetch(url, {
+      headers: { 'X-Api-Key': API_KEY },
+    });
     const data = await response.json();
 
     if (data.status !== 'ok') {
@@ -121,6 +150,7 @@ app.get('/api/news', async (req, res) => {
       .map(a => ({ ...a, category: categorize(a) }));
 
     cache.set(cacheKey, { data: articles, timestamp: now });
+    res.setHeader('Cache-Control', 'no-store');
     res.json({ articles, cached: false });
   } catch (err) {
     console.error('NewsAPI fetch error:', err);
