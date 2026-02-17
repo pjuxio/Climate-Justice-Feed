@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Climate Justice Feed</title>
+  <title>Climate Justice News Feed</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -16,11 +16,18 @@
       <div class="header-brand">
         <span class="brand-icon">&#127807;</span>
         <div>
-          <h1 class="brand-name">Climate Justice Feed</h1>
+          <h1 class="brand-name">Climate Justice News Feed</h1>
           <p class="brand-sub" id="brand-sub">Top stories · past 7 days</p>
         </div>
       </div>
       <div class="header-actions">
+        <button id="info-btn" class="icon-btn" title="How this works">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </button>
         <button id="refresh-btn" class="icon-btn" title="Refresh feed (R)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"></polyline>
@@ -71,9 +78,9 @@
       <div class="control-sep"></div>
       <div class="control-group">
         <span class="control-label">Range</span>
-        <button class="ctrl-btn" data-days="1">24h</button>
+        <button class="ctrl-btn active" data-days="1">24h</button>
         <button class="ctrl-btn" data-days="3">3d</button>
-        <button class="ctrl-btn active" data-days="7">7d</button>
+        <button class="ctrl-btn" data-days="7">7d</button>
         <button class="ctrl-btn" data-days="30">30d</button>
       </div>
     </div>
@@ -126,7 +133,69 @@
     <span id="article-count"></span>
     <span class="footer-sep">·</span>
     <span>Press <kbd>R</kbd> to refresh</span>
+    <span class="footer-sep">·</span>
+    <a href="https://buymeacoffee.com/pjux" target="_blank" rel="noopener" class="bmc-link">☕ Buy me a coffee</a>
   </footer>
+
+  <!-- Info modal -->
+  <div class="modal-overlay" id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-title">How this feed works</h2>
+        <button class="modal-close" id="modal-close" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+
+        <section class="info-section">
+          <h3 class="info-heading">What is this?</h3>
+          <p>The <strong>Climate Justice News Feed</strong> aggregates recent English-language news articles related to climate justice from thousands of global sources, powered by <a href="https://newsapi.org" target="_blank" rel="noopener">NewsAPI</a>. Results are refreshed on demand and cached for 5 minutes to keep things fast.</p>
+        </section>
+
+        <section class="info-section">
+          <h3 class="info-heading">Keyword search approach</h3>
+          <p>Every search uses a broad base query that covers the key terms in the climate justice space:</p>
+          <ul class="info-list">
+            <li><code>"climate justice"</code></li>
+            <li><code>"environmental justice"</code></li>
+            <li><code>"climate equity"</code></li>
+            <li><code>"climate racism"</code></li>
+            <li><code>"just transition"</code></li>
+          </ul>
+          <p>These are combined with <strong>OR</strong> so any article matching at least one phrase is included. This casts a wide net while staying focused on justice-framing — not just climate science or policy in general.</p>
+        </section>
+
+        <section class="info-section">
+          <h3 class="info-heading">Regional focus</h3>
+          <p>Selecting a region <strong>narrows</strong> results by ANDing the base query with geographic terms specific to that region. For example, choosing <strong>Africa</strong> appends:</p>
+          <p class="info-code">AND (Africa OR Nigeria OR Kenya OR Ghana OR "South Africa" OR Ethiopia OR "Sub-Saharan" …)</p>
+          <p>This surfaces stories where both the justice framing <em>and</em> the region appear, rather than just filtering by publisher location.</p>
+        </section>
+
+        <section class="info-section">
+          <h3 class="info-heading">Categories</h3>
+          <p>Each article is auto-categorised on the server by scanning its headline and description for keyword patterns:</p>
+          <ul class="info-list">
+            <li><strong>Policy</strong> — legislation, government, regulation, COP summits</li>
+            <li><strong>Community</strong> — grassroots, activism, Indigenous, protest, movement</li>
+            <li><strong>Science</strong> — research, data, emissions, temperature reports</li>
+            <li><strong>Environment</strong> — ecosystems, biodiversity, oceans, forests</li>
+            <li><strong>General</strong> — everything else</li>
+          </ul>
+        </section>
+
+        <section class="info-section">
+          <h3 class="info-heading">Sort &amp; range</h3>
+          <p><strong>Top</strong> ranks by article popularity across NewsAPI's index. <strong>Latest</strong> ranks by publish date. The date range controls how far back the search window reaches — from the past 24 hours up to 30 days.</p>
+        </section>
+
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

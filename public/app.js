@@ -2,7 +2,7 @@
 let allArticles = [];
 let activeFilter = 'All';
 let activeSortBy  = 'popularity';
-let activeDays    = 7;
+let activeDays    = 1;
 let activeRegion  = 'global';
 let bookmarks = new Set(JSON.parse(localStorage.getItem('cj_bookmarks') || '[]'));
 
@@ -24,6 +24,9 @@ const regionBtns  = document.querySelectorAll('[data-region]');
 const brandSub    = document.getElementById('brand-sub');
 const themeIconDark  = document.getElementById('theme-icon-dark');
 const themeIconLight = document.getElementById('theme-icon-light');
+const infoBtn        = document.getElementById('info-btn');
+const modalOverlay   = document.getElementById('modal-overlay');
+const modalClose     = document.getElementById('modal-close');
 
 /* ===== Helpers ===== */
 function timeAgo(iso) {
@@ -332,8 +335,28 @@ regionBtns.forEach(btn => {
 refreshBtn.addEventListener('click', () => fetchNews(true));
 retryBtn.addEventListener('click', () => fetchNews(true));
 
+/* ===== Info modal ===== */
+function openModal() {
+  modalOverlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  modalClose.focus();
+}
+
+function closeModal() {
+  modalOverlay.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+infoBtn.addEventListener('click', openModal);
+modalClose.addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
+
 /* ===== Keyboard shortcut ===== */
 document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && modalOverlay.style.display !== 'none') {
+    closeModal();
+    return;
+  }
   if (e.key === 'r' || e.key === 'R') {
     if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
       fetchNews(true);
