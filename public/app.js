@@ -51,7 +51,7 @@ function initials(name) {
 function getFaviconUrl(articleUrl) {
   try {
     const origin = new URL(articleUrl).origin;
-    return `https://www.google.com/s2/favicons?domain=${origin}&sz=64`;
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(origin)}&sz=64`;
   } catch { return null; }
 }
 
