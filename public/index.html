@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Climate Justice Feed</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <span class="brand-icon">&#127807;</span>
+        <div>
+          <h1 class="brand-name">Climate Justice Feed</h1>
+          <p class="brand-sub" id="brand-sub">Top stories · past 7 days</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="refresh-btn" class="icon-btn" title="Refresh feed (R)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </button>
+        <button id="theme-btn" class="icon-btn" title="Toggle theme">
+          <svg id="theme-icon-dark" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg id="theme-icon-light" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <div class="filter-inner">
+      <button class="filter-chip active" data-filter="All">All</button>
+      <button class="filter-chip" data-filter="Environment">Environment</button>
+      <button class="filter-chip" data-filter="Policy">Policy</button>
+      <button class="filter-chip" data-filter="Community">Community</button>
+      <button class="filter-chip" data-filter="Science">Science</button>
+      <button class="filter-chip" data-filter="General">General</button>
+    </div>
+  </div>
+
+  <!-- Controls bar: sort + date range + region focus -->
+  <div class="controls-bar">
+    <div class="controls-inner">
+      <div class="control-group">
+        <span class="control-label">Sort</span>
+        <button class="ctrl-btn active" data-sort="popularity">Top</button>
+        <button class="ctrl-btn" data-sort="publishedAt">Latest</button>
+      </div>
+      <div class="control-sep"></div>
+      <div class="control-group">
+        <span class="control-label">Range</span>
+        <button class="ctrl-btn" data-days="1">24h</button>
+        <button class="ctrl-btn" data-days="3">3d</button>
+        <button class="ctrl-btn active" data-days="7">7d</button>
+        <button class="ctrl-btn" data-days="30">30d</button>
+      </div>
+    </div>
+    <div class="controls-inner controls-inner--focus">
+      <div class="control-group">
+        <span class="control-label">Focus</span>
+        <button class="ctrl-btn focus-btn active" data-region="global">🌐 Global</button>
+        <button class="ctrl-btn focus-btn" data-region="americas">🌎 Americas</button>
+        <button class="ctrl-btn focus-btn" data-region="africa">🌍 Africa</button>
+        <button class="ctrl-btn focus-btn" data-region="asia">🌏 Asia Pacific</button>
+        <button class="ctrl-btn focus-btn" data-region="europe">🇪🇺 Europe</button>
+        <button class="ctrl-btn focus-btn" data-region="mena">🕌 MENA</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <main class="main">
+    <div class="feed" id="feed">
+      <!-- Skeleton loaders -->
+      <div class="skeleton-card"><div class="sk sk-header"></div><div class="sk sk-title"></div><div class="sk sk-title short"></div><div class="sk sk-img"></div><div class="sk sk-text"></div><div class="sk sk-text short"></div><div class="sk sk-footer"></div></div>
+      <div class="skeleton-card"><div class="sk sk-header"></div><div class="sk sk-title"></div><div class="sk sk-title short"></div><div class="sk sk-img"></div><div class="sk sk-text"></div><div class="sk sk-text short"></div><div class="sk sk-footer"></div></div>
+      <div class="skeleton-card"><div class="sk sk-header"></div><div class="sk sk-title"></div><div class="sk sk-img"></div><div class="sk sk-text"></div><div class="sk sk-footer"></div></div>
+    </div>
+
+    <!-- Error state (hidden by default) -->
+    <div class="error-state" id="error-state" style="display:none">
+      <div class="error-icon">&#9888;&#65039;</div>
+      <h2 class="error-title">Couldn't load the feed</h2>
+      <p class="error-msg" id="error-msg">Something went wrong.</p>
+      <button class="retry-btn" id="retry-btn">Try again</button>
+    </div>
+
+    <!-- Empty state (hidden by default) -->
+    <div class="error-state" id="empty-state" style="display:none">
+      <div class="error-icon">&#127803;</div>
+      <h2 class="error-title">No articles found</h2>
+      <p class="error-msg">No climate justice articles were found for this filter. Try another category or refresh.</p>
+      <button class="retry-btn" id="clear-filter-btn">Clear filter</button>
+    </div>
+  </main>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <span>Powered by <a href="https://newsapi.org" target="_blank" rel="noopener">NewsAPI</a></span>
+    <span class="footer-sep">·</span>
+    <span id="article-count"></span>
+    <span class="footer-sep">·</span>
+    <span>Press <kbd>R</kbd> to refresh</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

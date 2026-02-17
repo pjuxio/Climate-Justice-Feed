@@ -1,0 +1,15 @@
+{
+  "name": "tclp-climate-justice-newsfeed",
+  "version": "1.0.0",
+  "description": "Climate justice news aggregator with social media-style feed",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "node-fetch": "^2.7.0"
+  }
+}
