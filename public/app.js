@@ -2,7 +2,7 @@
 let allArticles = [];
 let activeFilter = 'All';
 let activeSortBy  = 'popularity';
-let activeDays    = 1;
+let activeDays    = 7;
 let activeRegion  = 'global';
 let bookmarks = new Set(JSON.parse(localStorage.getItem('cj_bookmarks') || '[]'));
 
