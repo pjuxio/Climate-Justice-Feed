@@ -364,5 +364,17 @@ document.addEventListener('keydown', e => {
   }
 });
 
+/* ===== Sync main padding-top to sticky stack height ===== */
+const stickyStack = document.getElementById('sticky-stack');
+const mainEl = document.querySelector('.main');
+
+function syncPadding() {
+  mainEl.style.paddingTop = stickyStack.offsetHeight + 'px';
+}
+
+const resizeObserver = new ResizeObserver(syncPadding);
+resizeObserver.observe(stickyStack);
+syncPadding();
+
 /* ===== Init ===== */
 fetchNews();
