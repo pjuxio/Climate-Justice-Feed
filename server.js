@@ -13,14 +13,10 @@ const API_KEY = process.env.NEWSAPI_KEY;
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Core climate justice search terms
+// Core climate justice search terms (kept under ~230 chars so regional AND clauses stay within NewsAPI's 500-char query limit)
 const BASE_QUERY =
   '"climate justice" OR "environmental justice" OR "climate equity" OR "climate racism" OR "just transition" ' +
-  'OR "Environmental Protection Agency" OR "Clean Air Act" OR "Clean Water Act" ' +
-  'OR "water pollution" OR "environmental regulation" ' +
-  'OR "climate policy" OR "fossil fuels" ' +
-  'OR "Inflation Reduction Act" OR "environmental law" OR "carbon tax" ' +
-  'OR "Conference of the Parties" OR "COP29" OR "COP30" OR "climate summit"';
+  'OR "climate policy" OR "fossil fuels" OR "environmental law" OR "carbon tax" OR "COP30" OR "climate summit"';
 
 // Geographic focus terms appended with AND to narrow results by region.
 // null = no regional restriction (global).
