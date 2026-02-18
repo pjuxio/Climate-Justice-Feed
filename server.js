@@ -15,7 +15,12 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Core climate justice search terms
 const BASE_QUERY =
-  '"climate justice" OR "environmental justice" OR "climate equity" OR "climate racism" OR "just transition"';
+  '"climate justice" OR "environmental justice" OR "climate equity" OR "climate racism" OR "just transition" ' +
+  'OR "Environmental Protection Agency" OR "Clean Air Act" OR "Clean Water Act" ' +
+  'OR "water pollution" OR "environmental regulation" ' +
+  'OR "climate policy" OR "fossil fuels" ' +
+  'OR "Inflation Reduction Act" OR "environmental law" OR "carbon tax" ' +
+  'OR "Conference of the Parties" OR "COP29" OR "COP30" OR "climate summit"';
 
 // Geographic focus terms appended with AND to narrow results by region.
 // null = no regional restriction (global).
@@ -132,7 +137,7 @@ app.get('/api/news', async (req, res) => {
       `&language=en` +
       `&sortBy=${sortBy}` +
       `&from=${from}` +
-      `&pageSize=40`;
+      `&pageSize=100`;
 
     // Send API key in header instead of query string to keep it out of logs
     const response = await fetch(url, {
