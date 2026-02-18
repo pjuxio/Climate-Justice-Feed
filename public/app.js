@@ -369,7 +369,7 @@ const stickyStack = document.getElementById('sticky-stack');
 const mainEl = document.querySelector('.main');
 
 function syncPadding() {
-  mainEl.style.paddingTop = stickyStack.offsetHeight + 'px';
+  mainEl.style.paddingTop = (stickyStack.offsetHeight + 20) + 'px';
 }
 
 const resizeObserver = new ResizeObserver(syncPadding);
