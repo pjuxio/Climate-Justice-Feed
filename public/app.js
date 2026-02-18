@@ -169,8 +169,12 @@ function createCard(article) {
     if (navigator.share) {
       try { await navigator.share({ title, url }); } catch {}
     } else {
-      await navigator.clipboard.writeText(url);
-      showToast('Link copied to clipboard');
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast('Link copied to clipboard');
+      } catch {
+        showToast('Unable to copy link');
+      }
     }
   });
 

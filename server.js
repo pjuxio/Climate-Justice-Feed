@@ -13,6 +13,14 @@ const API_KEY = process.env.NEWSAPI_KEY;
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Evict stale entries so they don't linger in memory indefinitely
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of cache.entries()) {
+    if (now - entry.timestamp >= CACHE_TTL) cache.delete(key);
+  }
+}, CACHE_TTL);
+
 // Core climate justice search terms (kept under ~230 chars so regional AND clauses stay within NewsAPI's 500-char query limit)
 const BASE_QUERY =
   '"climate justice" OR "environmental justice" OR "climate equity" OR "climate racism" OR "just transition" ' +
@@ -33,6 +41,14 @@ const REGION_TERMS = {
 // For all regions we stay in English; going broader (es, fr, pt, ar) would
 // require translation UI — add as a future enhancement.
 const VALID_REGIONS = Object.keys(REGION_TERMS);
+
+// Reject non-http(s) URLs to prevent javascript: / data: injection via API data
+function isSafeUrl(url) {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'https:' || protocol === 'http:';
+  } catch { return false; }
+}
 
 function buildQuery(region) {
   const geo = REGION_TERMS[region];
@@ -58,8 +74,8 @@ function normalizeArticle(article, index) {
     source: article.source?.name || 'Unknown Source',
     author: article.author || null,
     description: article.description || '',
-    url: article.url,
-    image: article.urlToImage || null,
+    url: isSafeUrl(article.url) ? article.url : null,
+    image: article.urlToImage && isSafeUrl(article.urlToImage) ? article.urlToImage : null,
     publishedAt: article.publishedAt,
     readTime: estimateReadTime((article.description || '') + ' ' + (article.content || '')),
   };
@@ -83,6 +99,21 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' https://www.googletagmanager.com",
+      "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'",
+      "font-src 'self' https://fonts.gstatic.com",
+      // Article images can originate from any publisher domain; Google S2 serves favicons
+      "img-src 'self' https://www.google.com data: blob: *",
+      "connect-src 'self' https://www.google-analytics.com https://analytics.google.com",
+      "frame-ancestors 'self'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; ')
+  );
   next();
 });
 
@@ -96,10 +127,17 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
-// Serve static files with 24-hour cache for assets
+// index.html must not be cached so users always receive the latest deploy
+app.get('/', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Serve other static assets (JS, CSS, images) with a 24-hour cache
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '1d',
   etag: true,
+  index: false, // handled explicitly above
 }));
 
 app.get('/api/news', async (req, res) => {
@@ -124,6 +162,9 @@ app.get('/api/news', async (req, res) => {
     return res.json({ articles: cached.data, cached: true });
   }
 
+  const controller = new AbortController();
+  const fetchTimeout = setTimeout(() => controller.abort(), 10_000);
+
   try {
     const q = buildQuery(region);
     const from = getDaysAgo(days);
@@ -138,22 +179,32 @@ app.get('/api/news', async (req, res) => {
     // Send API key in header instead of query string to keep it out of logs
     const response = await fetch(url, {
       headers: { 'X-Api-Key': API_KEY },
+      signal: controller.signal,
     });
+    clearTimeout(fetchTimeout);
     const data = await response.json();
 
     if (data.status !== 'ok') {
-      return res.status(502).json({ error: data.message || 'NewsAPI error' });
+      // Log full upstream message internally; return a generic error to the client
+      console.error('NewsAPI error:', data.message);
+      return res.status(502).json({ error: 'Unable to fetch news at this time. Please try again.' });
     }
 
     const articles = data.articles
       .filter(a => a.title && a.title !== '[Removed]' && a.url)
       .map(normalizeArticle)
+      .filter(a => a.url) // discard any articles whose URL failed isSafeUrl
       .map(a => ({ ...a, category: categorize(a) }));
 
     cache.set(cacheKey, { data: articles, timestamp: now });
     res.setHeader('Cache-Control', 'no-store');
     res.json({ articles, cached: false });
   } catch (err) {
+    clearTimeout(fetchTimeout);
+    if (err.name === 'AbortError') {
+      console.error('NewsAPI fetch timed out');
+      return res.status(504).json({ error: 'News service request timed out. Please try again.' });
+    }
     console.error('NewsAPI fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch news. Please try again.' });
   }
