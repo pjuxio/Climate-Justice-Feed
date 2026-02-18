@@ -105,7 +105,7 @@ function createCard(article) {
           ${faviconUrl
             ? `<img src="${faviconUrl}" alt="" onerror="this.style.display='none'">`
             : ''}
-          <span>${initials(article.source)}</span>
+          <span>${escHtml(initials(article.source))}</span>
         </div>
         <div class="source-info">
           <div class="source-name">${escHtml(article.source)}</div>
@@ -235,7 +235,13 @@ function updateSubtitle() {
 }
 
 /* ===== Fetch news ===== */
+let _fetchController = null;
+
 async function fetchNews(force = false) {
+  /* Cancel any in-flight request so a stale response can't overwrite newer results */
+  if (_fetchController) _fetchController.abort();
+  _fetchController = new AbortController();
+
   refreshBtn.classList.add('spinning');
   errorState.style.display = 'none';
   emptyState.style.display = 'none';
@@ -259,7 +265,7 @@ async function fetchNews(force = false) {
   try {
     const params = new URLSearchParams({ sortBy: activeSortBy, days: activeDays, region: activeRegion });
     if (force) params.set('force', '1');
-    const res  = await fetch(`/api/news?${params}`);
+    const res  = await fetch(`/api/news?${params}`, { signal: _fetchController.signal });
     const data = await res.json();
 
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -269,6 +275,7 @@ async function fetchNews(force = false) {
 
     if (force) showToast(data.cached ? 'Feed is up to date' : 'Feed refreshed');
   } catch (err) {
+    if (err.name === 'AbortError') return; // Superseded by a newer request — do nothing
     feed.innerHTML = '';
     errorState.style.display = 'flex';
     errorMsg.textContent = err.message || 'Unable to connect to the server.';

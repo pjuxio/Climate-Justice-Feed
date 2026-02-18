@@ -50,6 +50,13 @@ function estimateReadTime(text) {
   return Math.max(1, Math.ceil(words / 200));
 }
 
+function isSafeUrl(url) {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch { return false; }
+}
+
 function normalizeArticle(article, index) {
   return {
     id: index,
@@ -58,7 +65,8 @@ function normalizeArticle(article, index) {
     author: article.author || null,
     description: article.description || '',
     url: article.url,
-    image: article.urlToImage || null,
+    // Only pass through http(s) images to avoid protocol-based injection
+    image: article.urlToImage && isSafeUrl(article.urlToImage) ? article.urlToImage : null,
     publishedAt: article.publishedAt,
     readTime: estimateReadTime((article.description || '') + ' ' + (article.content || '')),
   };
@@ -141,11 +149,12 @@ app.get('/api/news', async (req, res) => {
     const data = await response.json();
 
     if (data.status !== 'ok') {
-      return res.status(502).json({ error: data.message || 'NewsAPI error' });
+      console.error('NewsAPI error response:', data.message);
+      return res.status(502).json({ error: 'Unable to retrieve articles. Please try again later.' });
     }
 
     const articles = data.articles
-      .filter(a => a.title && a.title !== '[Removed]' && a.url)
+      .filter(a => a.title && a.title !== '[Removed]' && isSafeUrl(a.url))
       .map(normalizeArticle)
       .map(a => ({ ...a, category: categorize(a) }));
 
