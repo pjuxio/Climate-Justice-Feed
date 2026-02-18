@@ -2,12 +2,46 @@ require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
 const path = require('path');
+const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.NEWSAPI_KEY;
+const EDITOR_TOKEN = process.env.EDITOR_TOKEN;
+
+// ─── Curation: editor-managed hidden/pinned articles ──────────────────────────
+const CURATION_FILE = path.join(__dirname, 'curation.json');
+
+function loadCuration() {
+  try {
+    const data = JSON.parse(fs.readFileSync(CURATION_FILE, 'utf8'));
+    return {
+      hidden: Array.isArray(data.hidden) ? data.hidden : [],
+      pinned: Array.isArray(data.pinned) ? data.pinned : [],
+    };
+  } catch {
+    return { hidden: [], pinned: [] };
+  }
+}
+
+function saveCuration(data) {
+  fs.writeFileSync(CURATION_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
+let curation = loadCuration();
+
+// Apply hidden + pinned curation to a raw article list.
+// Hidden articles are removed; pinned articles are moved to the front.
+// Called at serve-time so curation changes take effect without bypassing cache.
+function applyCuration(articles) {
+  const hiddenSet = new Set(curation.hidden);
+  const pinnedUrls = new Set(curation.pinned.map(p => p.url));
+  const live = articles.filter(a => !hiddenSet.has(a.url) && !pinnedUrls.has(a.url));
+  const pinned = curation.pinned.map((p, i) => ({ ...p, id: `pinned-${i}`, pinned: true }));
+  return [...pinned, ...live];
+}
 
 // Per-param cache: key = `${sortBy}_${days}_${region}`
 const cache = new Map();
@@ -93,6 +127,9 @@ function categorize(article) {
 // Gzip / deflate all responses
 app.use(compression());
 
+// Parse JSON bodies (needed for curation POST/DELETE endpoints)
+app.use(express.json());
+
 // Security headers
 app.use((req, res, next) => {
   res.removeHeader('X-Powered-By');
@@ -127,6 +164,18 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
+// Editor auth: validates X-Editor-Token header against EDITOR_TOKEN env var
+function editorAuth(req, res, next) {
+  if (!EDITOR_TOKEN) {
+    return res.status(503).json({ error: 'Editor mode is not configured. Set EDITOR_TOKEN in .env.' });
+  }
+  const token = req.headers['x-editor-token'];
+  if (!token || token !== EDITOR_TOKEN) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+}
+
 // index.html must not be cached so users always receive the latest deploy
 app.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -139,6 +188,69 @@ app.use(express.static(path.join(__dirname, 'public'), {
   etag: true,
   index: false, // handled explicitly above
 }));
+
+// ─── Curation API ─────────────────────────────────────────────────────────────
+
+// Public: read current curation state (frontend loads this to show badges/counts)
+app.get('/api/curation', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ hidden: curation.hidden, pinned: curation.pinned });
+});
+
+// Hide an article by URL — removes it from the public feed
+app.post('/api/curation/hide', editorAuth, (req, res) => {
+  const { url } = req.body;
+  if (!url || !isSafeUrl(url)) return res.status(400).json({ error: 'Invalid URL' });
+  if (!curation.hidden.includes(url)) {
+    curation.hidden.push(url);
+    saveCuration(curation);
+  }
+  res.json({ ok: true });
+});
+
+// Unhide a previously hidden article
+app.delete('/api/curation/hide', editorAuth, (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'URL required' });
+  curation.hidden = curation.hidden.filter(u => u !== url);
+  saveCuration(curation);
+  res.json({ ok: true });
+});
+
+// Pin an article — stores full article data so it always appears at the top
+app.post('/api/curation/pin', editorAuth, (req, res) => {
+  const { url, title, source, author, description, image, publishedAt, readTime, category, note } = req.body;
+  if (!url || !isSafeUrl(url)) return res.status(400).json({ error: 'Invalid URL' });
+  if (!curation.pinned.find(p => p.url === url)) {
+    curation.pinned.unshift({
+      url,
+      title: String(title || '').slice(0, 500),
+      source: String(source || '').slice(0, 200),
+      author: author ? String(author).slice(0, 200) : null,
+      description: String(description || '').slice(0, 2000),
+      image: image && isSafeUrl(image) ? image : null,
+      publishedAt: publishedAt || new Date().toISOString(),
+      readTime: Math.min(Math.max(Number(readTime) || 1, 1), 60),
+      category: ['Policy', 'Community', 'Science', 'Environment', 'General'].includes(category)
+        ? category : 'General',
+      note: String(note || '').slice(0, 500),
+      pinnedAt: new Date().toISOString(),
+    });
+    saveCuration(curation);
+  }
+  res.json({ ok: true });
+});
+
+// Unpin an article
+app.delete('/api/curation/pin', editorAuth, (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'URL required' });
+  curation.pinned = curation.pinned.filter(p => p.url !== url);
+  saveCuration(curation);
+  res.json({ ok: true });
+});
+
+// ─── News API ─────────────────────────────────────────────────────────────────
 
 app.get('/api/news', async (req, res) => {
   if (!API_KEY) {
@@ -159,7 +271,7 @@ app.get('/api/news', async (req, res) => {
 
   if (!force && cached && now - cached.timestamp < CACHE_TTL) {
     res.setHeader('Cache-Control', 'no-store');
-    return res.json({ articles: cached.data, cached: true });
+    return res.json({ articles: applyCuration(cached.data), cached: true });
   }
 
   const controller = new AbortController();
@@ -198,7 +310,7 @@ app.get('/api/news', async (req, res) => {
 
     cache.set(cacheKey, { data: articles, timestamp: now });
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ articles, cached: false });
+    res.json({ articles: applyCuration(articles), cached: false });
   } catch (err) {
     clearTimeout(fetchTimeout);
     if (err.name === 'AbortError') {
@@ -214,5 +326,8 @@ app.listen(PORT, () => {
   console.log(`\n  Climate Justice Newsfeed running at http://localhost:${PORT}\n`);
   if (!API_KEY) {
     console.warn('  WARNING: NEWSAPI_KEY not set. Create a .env file with your key.\n');
+  }
+  if (!EDITOR_TOKEN) {
+    console.warn('  NOTE: EDITOR_TOKEN not set. Editor curation mode is disabled.\n');
   }
 });

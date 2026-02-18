@@ -6,6 +6,12 @@ let activeDays    = 7;
 let activeRegion  = 'global';
 let bookmarks = new Set(JSON.parse(localStorage.getItem('cj_bookmarks') || '[]'));
 
+/* ===== Editor state ===== */
+let isEditorMode = false;
+let editorToken  = sessionStorage.getItem('cj_editor_token') || '';
+// curationData mirrors what the server holds — updated after every editor action
+let curationData = { hidden: [], pinned: [] };
+
 /* ===== DOM refs ===== */
 const feed        = document.getElementById('feed');
 const errorState  = document.getElementById('error-state');
@@ -27,6 +33,20 @@ const themeIconLight = document.getElementById('theme-icon-light');
 const infoBtn        = document.getElementById('info-btn');
 const modalOverlay   = document.getElementById('modal-overlay');
 const modalClose     = document.getElementById('modal-close');
+
+/* Editor DOM refs */
+const editorBanner       = document.getElementById('editor-banner');
+const editorCounts       = document.getElementById('editor-counts');
+const editorManageBtn    = document.getElementById('editor-manage-btn');
+const editorExitBtn      = document.getElementById('editor-exit-btn');
+const editorLoginOverlay = document.getElementById('editor-login-overlay');
+const editorLoginClose   = document.getElementById('editor-login-close');
+const editorTokenInput   = document.getElementById('editor-token-input');
+const editorLoginSubmit  = document.getElementById('editor-login-submit');
+const editorLoginError   = document.getElementById('editor-login-error');
+const editorManageOverlay= document.getElementById('editor-manage-overlay');
+const editorManageClose  = document.getElementById('editor-manage-close');
+const editorManageBody   = document.getElementById('editor-manage-body');
 
 /* ===== Helpers ===== */
 function timeAgo(iso) {
@@ -89,17 +109,21 @@ themeBtn.addEventListener('click', () => {
 function createCard(article) {
   const a = document.createElement('a');
   a.className = 'card';
+  if (article.pinned) a.classList.add('card--pinned');
   a.href = article.url;
   a.target = '_blank';
   a.rel = 'noopener noreferrer';
-  a.dataset.id = article.id;
+  a.dataset.id  = article.id;
+  a.dataset.url = article.url;
   a.dataset.category = article.category;
 
   const faviconUrl = getFaviconUrl(article.url);
   const isBookmarked = bookmarks.has(String(article.id));
+  const isPinned = !!article.pinned;
 
   a.innerHTML = `
     <div class="card-body">
+      ${isPinned ? `<div class="pinned-bar"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M16 3a1 1 0 0 1 .7 1.7l-1.4 1.4 1 3.6a1 1 0 0 1-.3 1l-3 2.6V17a1 1 0 0 1-.3.7l-2 2a1 1 0 0 1-1.5-1.3l.1-.1 1.7-1.7v-4.3a1 1 0 0 1 .3-.7l3-2.6-.9-3.3 1.5-1.5A1 1 0 0 1 16 3zm-5.7 11.6L4 21.3a1 1 0 0 0 1.3 1.5l.1-.1 6.3-6.3-1.4-.8z"/></svg> Editor's pick${article.note ? ` · <span class="pinned-note">${escHtml(article.note)}</span>` : ''}</div>` : ''}
       <div class="card-meta">
         <div class="source-avatar">
           ${faviconUrl
@@ -184,6 +208,47 @@ function createCard(article) {
     e.stopPropagation();
     window.open(article.url, '_blank', 'noopener,noreferrer');
   });
+
+  /* Editor toolbar — injected when editor mode is active */
+  if (isEditorMode) {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'editor-toolbar';
+
+    if (isPinned) {
+      toolbar.innerHTML = `
+        <button class="editor-btn editor-unpin-btn" title="Unpin article">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Unpin
+        </button>`;
+      toolbar.querySelector('.editor-unpin-btn').addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        editorUnpin(article.url);
+      });
+    } else {
+      toolbar.innerHTML = `
+        <button class="editor-btn editor-pin-btn" title="Pin to top of feed">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 3a1 1 0 0 1 .7 1.7l-1.4 1.4 1 3.6a1 1 0 0 1-.3 1l-3 2.6V17a1 1 0 0 1-.3.7l-2 2a1 1 0 0 1-1.5-1.3l.1-.1 1.7-1.7v-4.3a1 1 0 0 1 .3-.7l3-2.6-.9-3.3 1.5-1.5A1 1 0 0 1 16 3zm-5.7 11.6L4 21.3a1 1 0 0 0 1.3 1.5l.1-.1 6.3-6.3-1.4-.8z"/></svg>
+          Pin
+        </button>
+        <button class="editor-btn editor-hide-btn" title="Hide from feed">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Hide
+        </button>`;
+      toolbar.querySelector('.editor-pin-btn').addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        editorPin(article);
+      });
+      toolbar.querySelector('.editor-hide-btn').addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        editorHide(article);
+      });
+    }
+
+    a.appendChild(toolbar);
+  }
 
   return a;
 }
@@ -355,16 +420,22 @@ infoBtn.addEventListener('click', openModal);
 modalClose.addEventListener('click', closeModal);
 modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
 
-/* ===== Keyboard shortcut ===== */
+/* ===== Keyboard shortcuts ===== */
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && modalOverlay.style.display !== 'none') {
-    closeModal();
-    return;
+  if (e.key === 'Escape') {
+    if (modalOverlay.style.display !== 'none') { closeModal(); return; }
+    if (editorLoginOverlay.style.display !== 'none') { closeEditorLogin(); return; }
+    if (editorManageOverlay.style.display !== 'none') { closeEditorManage(); return; }
   }
   if (e.key === 'r' || e.key === 'R') {
     if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
       fetchNews(true);
     }
+  }
+  /* Ctrl+Shift+E → toggle editor mode */
+  if ((e.key === 'E' || e.key === 'e') && e.ctrlKey && e.shiftKey) {
+    e.preventDefault();
+    toggleEditorMode();
   }
 });
 
@@ -379,6 +450,269 @@ function syncPadding() {
 const resizeObserver = new ResizeObserver(syncPadding);
 resizeObserver.observe(stickyStack);
 syncPadding();
+
+/* ===== Editor mode ===== */
+
+function updateEditorCounts() {
+  const p = curationData.pinned.length;
+  const h = curationData.hidden.length;
+  editorCounts.textContent =
+    `${p} pinned · ${h} hidden`;
+}
+
+async function fetchCuration() {
+  try {
+    const res = await fetch('/api/curation');
+    if (res.ok) {
+      curationData = await res.json();
+      updateEditorCounts();
+    }
+  } catch { /* non-fatal */ }
+}
+
+function enterEditorMode() {
+  isEditorMode = true;
+  editorBanner.style.display = '';
+  fetchCuration();
+  renderFeed(); // re-render cards with editor toolbars
+  showToast('Editor mode active · Ctrl+Shift+E to exit');
+}
+
+function exitEditorMode() {
+  isEditorMode = false;
+  editorBanner.style.display = 'none';
+  renderFeed(); // re-render cards without editor toolbars
+}
+
+function toggleEditorMode() {
+  if (isEditorMode) {
+    exitEditorMode();
+    return;
+  }
+  /* If we already have a stored token, try entering directly */
+  if (editorToken) {
+    enterEditorMode();
+  } else {
+    openEditorLogin();
+  }
+}
+
+/* ── Editor login modal ── */
+function openEditorLogin() {
+  editorLoginError.style.display = 'none';
+  editorTokenInput.value = '';
+  editorLoginOverlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => editorTokenInput.focus(), 60);
+}
+
+function closeEditorLogin() {
+  editorLoginOverlay.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+editorLoginClose.addEventListener('click', closeEditorLogin);
+editorLoginOverlay.addEventListener('click', e => { if (e.target === editorLoginOverlay) closeEditorLogin(); });
+
+async function submitEditorLogin() {
+  const token = editorTokenInput.value.trim();
+  if (!token) return;
+
+  editorLoginSubmit.disabled = true;
+  editorLoginSubmit.textContent = 'Verifying…';
+  editorLoginError.style.display = 'none';
+
+  try {
+    /* Verify token by attempting a no-op: try to fetch curation with the token */
+    const res = await fetch('/api/curation/hide', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Editor-Token': token },
+      body: JSON.stringify({ url: 'https://verify.test' }), // invalid URL → 400, not 401
+    });
+
+    if (res.status === 401) {
+      editorLoginError.textContent = 'Incorrect token. Try again.';
+      editorLoginError.style.display = '';
+      editorTokenInput.select();
+    } else {
+      /* 400 (invalid URL) or any non-401 means auth passed */
+      editorToken = token;
+      sessionStorage.setItem('cj_editor_token', token);
+      closeEditorLogin();
+      enterEditorMode();
+    }
+  } catch {
+    editorLoginError.textContent = 'Network error. Please try again.';
+    editorLoginError.style.display = '';
+  } finally {
+    editorLoginSubmit.disabled = false;
+    editorLoginSubmit.textContent = 'Enter Editor Mode';
+  }
+}
+
+editorLoginSubmit.addEventListener('click', submitEditorLogin);
+editorTokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitEditorLogin(); });
+
+/* ── Editor banner controls ── */
+editorExitBtn.addEventListener('click', () => {
+  exitEditorMode();
+  showToast('Exited editor mode');
+});
+
+editorManageBtn.addEventListener('click', openEditorManage);
+
+/* ── Editor manage modal ── */
+function openEditorManage() {
+  renderEditorManage();
+  editorManageOverlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeEditorManage() {
+  editorManageOverlay.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+editorManageClose.addEventListener('click', closeEditorManage);
+editorManageOverlay.addEventListener('click', e => { if (e.target === editorManageOverlay) closeEditorManage(); });
+
+function renderEditorManage() {
+  const pinned = curationData.pinned || [];
+  const hidden = curationData.hidden || [];
+
+  editorManageBody.innerHTML = `
+    <section class="info-section">
+      <h3 class="info-heading">Pinned (${pinned.length})</h3>
+      ${pinned.length === 0
+        ? '<p style="font-size:0.875rem;color:var(--text-muted)">No pinned articles. Pin articles from the feed using editor mode.</p>'
+        : pinned.map(p => `
+          <div class="manage-row" data-url="${escHtml(p.url)}">
+            <div class="manage-row-info">
+              <div class="manage-row-title">${escHtml(p.title || p.url)}</div>
+              <div class="manage-row-meta">${escHtml(p.source || '')}${p.note ? ` · <em>${escHtml(p.note)}</em>` : ''}</div>
+            </div>
+            <button class="editor-btn editor-unpin-btn manage-unpin-btn" data-url="${escHtml(p.url)}">Unpin</button>
+          </div>`).join('')}
+    </section>
+    <section class="info-section">
+      <h3 class="info-heading">Hidden (${hidden.length})</h3>
+      ${hidden.length === 0
+        ? '<p style="font-size:0.875rem;color:var(--text-muted)">No hidden articles.</p>'
+        : hidden.map(url => `
+          <div class="manage-row" data-url="${escHtml(url)}">
+            <div class="manage-row-info">
+              <div class="manage-row-title manage-row-url">${escHtml(url)}</div>
+            </div>
+            <button class="editor-btn editor-unhide-btn manage-unhide-btn" data-url="${escHtml(url)}">Unhide</button>
+          </div>`).join('')}
+    </section>`;
+
+  editorManageBody.querySelectorAll('.manage-unpin-btn').forEach(btn => {
+    btn.addEventListener('click', () => editorUnpin(btn.dataset.url));
+  });
+  editorManageBody.querySelectorAll('.manage-unhide-btn').forEach(btn => {
+    btn.addEventListener('click', () => editorUnhide(btn.dataset.url));
+  });
+}
+
+/* ── Curation actions ── */
+
+async function curationRequest(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'X-Editor-Token': editorToken },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    /* Token rejected — clear it and drop out of editor mode */
+    editorToken = '';
+    sessionStorage.removeItem('cj_editor_token');
+    exitEditorMode();
+    showToast('Session expired. Please log in again.');
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function editorHide(article) {
+  try {
+    await curationRequest('POST', '/api/curation/hide', { url: article.url });
+    curationData.hidden.push(article.url);
+    updateEditorCounts();
+    /* Remove the card from view immediately */
+    const card = feed.querySelector(`[data-url="${CSS.escape(article.url)}"]`);
+    if (card) {
+      card.classList.add('card--removing');
+      setTimeout(() => { card.remove(); updateArticleCount(); }, 300);
+    }
+    showToast('Article hidden from feed');
+  } catch (err) {
+    showToast(`Error: ${err.message}`);
+  }
+}
+
+async function editorUnhide(url) {
+  try {
+    await curationRequest('DELETE', '/api/curation/hide', { url });
+    curationData.hidden = curationData.hidden.filter(u => u !== url);
+    updateEditorCounts();
+    /* Refresh feed to bring the article back */
+    await fetchNews(true);
+    renderEditorManage();
+    showToast('Article restored to feed');
+  } catch (err) {
+    showToast(`Error: ${err.message}`);
+  }
+}
+
+async function editorPin(article) {
+  const note = prompt('Optional editor note (leave blank for none):') ?? '';
+  if (note === null) return; // cancelled
+
+  try {
+    await curationRequest('POST', '/api/curation/pin', {
+      url: article.url,
+      title: article.title,
+      source: article.source,
+      author: article.author,
+      description: article.description,
+      image: article.image,
+      publishedAt: article.publishedAt,
+      readTime: article.readTime,
+      category: article.category,
+      note: note.trim(),
+    });
+    curationData.pinned.unshift({ ...article, note: note.trim() });
+    updateEditorCounts();
+    /* Refresh feed so pinned article appears at top with badge */
+    await fetchNews(true);
+    showToast('Article pinned to top of feed');
+  } catch (err) {
+    showToast(`Error: ${err.message}`);
+  }
+}
+
+async function editorUnpin(url) {
+  try {
+    await curationRequest('DELETE', '/api/curation/pin', { url });
+    curationData.pinned = curationData.pinned.filter(p => p.url !== url);
+    updateEditorCounts();
+    await fetchNews(true);
+    if (editorManageOverlay.style.display !== 'none') renderEditorManage();
+    showToast('Article unpinned');
+  } catch (err) {
+    showToast(`Error: ${err.message}`);
+  }
+}
+
+function updateArticleCount() {
+  const cards = feed.querySelectorAll('.card:not(.card--removing)');
+  articleCount.textContent = `${cards.length} article${cards.length !== 1 ? 's' : ''}`;
+}
 
 /* ===== Init ===== */
 fetchNews();
