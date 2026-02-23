@@ -4,6 +4,8 @@ const fetch = require('node-fetch');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
+const cron = require('node-cron');
+const { saveArticles, queryArticles, getStats } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -90,6 +92,96 @@ function categorize(article) {
   return 'General';
 }
 
+// ---------------------------------------------------------------------------
+// NewsAPI fetch helper (shared by the live endpoint and the background collector)
+// ---------------------------------------------------------------------------
+async function fetchFromNewsAPI({ sortBy = 'popularity', days = 7, region = 'global' } = {}) {
+  if (!API_KEY) throw new Error('NEWSAPI_KEY not configured');
+
+  const controller = new AbortController();
+  const fetchTimeout = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const q = buildQuery(region);
+    const from = getDaysAgo(days);
+    const url =
+      `https://newsapi.org/v2/everything` +
+      `?q=${encodeURIComponent(q)}` +
+      `&language=en` +
+      `&sortBy=${sortBy}` +
+      `&from=${from}` +
+      `&pageSize=100`;
+
+    const response = await fetch(url, {
+      headers: { 'X-Api-Key': API_KEY },
+      signal: controller.signal,
+    });
+    clearTimeout(fetchTimeout);
+    const data = await response.json();
+
+    if (data.status !== 'ok') {
+      throw new Error(`NewsAPI error: ${data.message}`);
+    }
+
+    const articles = data.articles
+      .filter(a => a.title && a.title !== '[Removed]' && a.url)
+      .map(normalizeArticle)
+      .filter(a => a.url)
+      .map(a => ({ ...a, category: categorize(a) }));
+
+    return articles;
+  } catch (err) {
+    clearTimeout(fetchTimeout);
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Background dataset collector
+// Runs once per hour, cycling through all regions with a 30-day window.
+// This builds the historical dataset over time without hammering the API.
+// ---------------------------------------------------------------------------
+let collectorRunning = false;
+
+async function runCollector() {
+  if (!API_KEY) return;
+  if (collectorRunning) {
+    console.log('[collector] Previous run still in progress, skipping.');
+    return;
+  }
+  collectorRunning = true;
+  console.log('[collector] Starting scheduled collection run…');
+
+  let totalInserted = 0;
+  let totalUpdated = 0;
+
+  for (const region of VALID_REGIONS) {
+    try {
+      const articles = await fetchFromNewsAPI({ sortBy: 'publishedAt', days: 30, region });
+      const { inserted, updated } = saveArticles(articles, region);
+      totalInserted += inserted;
+      totalUpdated += updated;
+      console.log(`[collector] ${region}: +${inserted} new, ${updated} updated`);
+
+      // Small pause between API calls to be a good citizen
+      await new Promise(r => setTimeout(r, 1500));
+    } catch (err) {
+      console.error(`[collector] Error fetching region "${region}":`, err.message);
+    }
+  }
+
+  console.log(`[collector] Done. Total: +${totalInserted} new, ${totalUpdated} updated.`);
+  collectorRunning = false;
+}
+
+// Run once at startup (after a short delay to let the server start), then every hour.
+setTimeout(runCollector, 5_000);
+cron.schedule('0 * * * *', runCollector); // top of every hour
+
+// ---------------------------------------------------------------------------
+// Middleware
+// ---------------------------------------------------------------------------
+
 // Gzip / deflate all responses
 app.use(compression());
 
@@ -127,6 +219,10 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
 // index.html must not be cached so users always receive the latest deploy
 app.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -140,6 +236,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
   index: false, // handled explicitly above
 }));
 
+// Live news feed (unchanged behaviour, but now also persists to the DB)
 app.get('/api/news', async (req, res) => {
   if (!API_KEY) {
     return res.status(500).json({ error: 'News service is not configured.' });
@@ -162,45 +259,21 @@ app.get('/api/news', async (req, res) => {
     return res.json({ articles: cached.data, cached: true });
   }
 
-  const controller = new AbortController();
-  const fetchTimeout = setTimeout(() => controller.abort(), 10_000);
-
   try {
-    const q = buildQuery(region);
-    const from = getDaysAgo(days);
-    const url =
-      `https://newsapi.org/v2/everything` +
-      `?q=${encodeURIComponent(q)}` +
-      `&language=en` +
-      `&sortBy=${sortBy}` +
-      `&from=${from}` +
-      `&pageSize=100`;
+    const articles = await fetchFromNewsAPI({ sortBy, days, region });
 
-    // Send API key in header instead of query string to keep it out of logs
-    const response = await fetch(url, {
-      headers: { 'X-Api-Key': API_KEY },
-      signal: controller.signal,
-    });
-    clearTimeout(fetchTimeout);
-    const data = await response.json();
-
-    if (data.status !== 'ok') {
-      // Log full upstream message internally; return a generic error to the client
-      console.error('NewsAPI error:', data.message);
-      return res.status(502).json({ error: 'Unable to fetch news at this time. Please try again.' });
+    // Persist to the dataset database (fire-and-don't-block-response)
+    try {
+      const { inserted, updated } = saveArticles(articles, region);
+      if (inserted > 0) console.log(`[db] Saved from live feed (${region}): +${inserted} new, ${updated} updated`);
+    } catch (dbErr) {
+      console.error('[db] Failed to save articles:', dbErr.message);
     }
-
-    const articles = data.articles
-      .filter(a => a.title && a.title !== '[Removed]' && a.url)
-      .map(normalizeArticle)
-      .filter(a => a.url) // discard any articles whose URL failed isSafeUrl
-      .map(a => ({ ...a, category: categorize(a) }));
 
     cache.set(cacheKey, { data: articles, timestamp: now });
     res.setHeader('Cache-Control', 'no-store');
     res.json({ articles, cached: false });
   } catch (err) {
-    clearTimeout(fetchTimeout);
     if (err.name === 'AbortError') {
       console.error('NewsAPI fetch timed out');
       return res.status(504).json({ error: 'News service request timed out. Please try again.' });
@@ -210,6 +283,50 @@ app.get('/api/news', async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Dataset API – query the collected article database
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/dataset/articles
+ * Query parameters (all optional):
+ *   category  – exact match (Policy | Community | Science | Environment | General)
+ *   region    – exact match (global | americas | africa | asia | europe | mena)
+ *   source    – partial match on source name
+ *   from      – ISO date string lower bound on published_at  (e.g. 2024-01-01)
+ *   to        – ISO date string upper bound on published_at
+ *   search    – keyword search on title + description
+ *   sort      – "published" (default) | "first_seen"
+ *   limit     – rows per page (default 50, max 200)
+ *   offset    – pagination offset (default 0)
+ */
+app.get('/api/dataset/articles', (req, res) => {
+  try {
+    const { category, region, source, from, to, search, sort, limit, offset } = req.query;
+    const result = queryArticles({ category, region, source, from, to, search, sort, limit, offset });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(result);
+  } catch (err) {
+    console.error('[dataset] Query error:', err);
+    res.status(500).json({ error: 'Failed to query dataset.' });
+  }
+});
+
+/**
+ * GET /api/dataset/stats
+ * Returns aggregate statistics about the collected dataset.
+ */
+app.get('/api/dataset/stats', (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(getStats());
+  } catch (err) {
+    console.error('[dataset] Stats error:', err);
+    res.status(500).json({ error: 'Failed to retrieve dataset statistics.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`\n  Climate Justice Newsfeed running at http://localhost:${PORT}\n`);
   if (!API_KEY) {
