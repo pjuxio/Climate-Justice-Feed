@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
 const path = require('path');
-const fs = require('fs');
+const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 
@@ -11,26 +11,39 @@ const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.NEWSAPI_KEY;
 const EDITOR_TOKEN = process.env.EDITOR_TOKEN;
 
-// ─── Curation: editor-managed hidden/pinned articles ──────────────────────────
-const CURATION_FILE = path.join(__dirname, 'curation.json');
+// ─── Postgres: curation persistence ───────────────────────────────────────────
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
+});
 
-function loadCuration() {
-  try {
-    const data = JSON.parse(fs.readFileSync(CURATION_FILE, 'utf8'));
-    return {
-      hidden: Array.isArray(data.hidden) ? data.hidden : [],
-      pinned: Array.isArray(data.pinned) ? data.pinned : [],
-    };
-  } catch {
-    return { hidden: [], pinned: [] };
-  }
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS curation (
+      id   INT  PRIMARY KEY DEFAULT 1,
+      hidden JSONB NOT NULL DEFAULT '[]',
+      pinned JSONB NOT NULL DEFAULT '[]'
+    )
+  `);
+  await pool.query(`INSERT INTO curation (id) VALUES (1) ON CONFLICT DO NOTHING`);
 }
 
-function saveCuration(data) {
-  fs.writeFileSync(CURATION_FILE, JSON.stringify(data, null, 2), 'utf8');
+async function loadCuration() {
+  const { rows } = await pool.query('SELECT hidden, pinned FROM curation WHERE id = 1');
+  return {
+    hidden: Array.isArray(rows[0]?.hidden) ? rows[0].hidden : [],
+    pinned: Array.isArray(rows[0]?.pinned) ? rows[0].pinned : [],
+  };
 }
 
-let curation = loadCuration();
+async function saveCuration(data) {
+  await pool.query(
+    'UPDATE curation SET hidden = $1, pinned = $2 WHERE id = 1',
+    [JSON.stringify(data.hidden), JSON.stringify(data.pinned)]
+  );
+}
+
+let curation = { hidden: [], pinned: [] }; // populated in start()
 
 // Apply hidden + pinned curation to a raw article list.
 // Hidden articles are removed; pinned articles are moved to the front.
@@ -198,27 +211,27 @@ app.get('/api/curation', (req, res) => {
 });
 
 // Hide an article by URL — removes it from the public feed
-app.post('/api/curation/hide', editorAuth, (req, res) => {
+app.post('/api/curation/hide', editorAuth, async (req, res) => {
   const { url } = req.body;
   if (!url || !isSafeUrl(url)) return res.status(400).json({ error: 'Invalid URL' });
   if (!curation.hidden.includes(url)) {
     curation.hidden.push(url);
-    saveCuration(curation);
+    await saveCuration(curation);
   }
   res.json({ ok: true });
 });
 
 // Unhide a previously hidden article
-app.delete('/api/curation/hide', editorAuth, (req, res) => {
+app.delete('/api/curation/hide', editorAuth, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'URL required' });
   curation.hidden = curation.hidden.filter(u => u !== url);
-  saveCuration(curation);
+  await saveCuration(curation);
   res.json({ ok: true });
 });
 
 // Pin an article — stores full article data so it always appears at the top
-app.post('/api/curation/pin', editorAuth, (req, res) => {
+app.post('/api/curation/pin', editorAuth, async (req, res) => {
   const { url, title, source, author, description, image, publishedAt, readTime, category, note } = req.body;
   if (!url || !isSafeUrl(url)) return res.status(400).json({ error: 'Invalid URL' });
   if (!curation.pinned.find(p => p.url === url)) {
@@ -236,17 +249,17 @@ app.post('/api/curation/pin', editorAuth, (req, res) => {
       note: String(note || '').slice(0, 500),
       pinnedAt: new Date().toISOString(),
     });
-    saveCuration(curation);
+    await saveCuration(curation);
   }
   res.json({ ok: true });
 });
 
 // Unpin an article
-app.delete('/api/curation/pin', editorAuth, (req, res) => {
+app.delete('/api/curation/pin', editorAuth, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'URL required' });
   curation.pinned = curation.pinned.filter(p => p.url !== url);
-  saveCuration(curation);
+  await saveCuration(curation);
   res.json({ ok: true });
 });
 
@@ -322,12 +335,14 @@ app.get('/api/news', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`\n  Climate Justice Newsfeed running at http://localhost:${PORT}\n`);
-  if (!API_KEY) {
-    console.warn('  WARNING: NEWSAPI_KEY not set. Create a .env file with your key.\n');
-  }
-  if (!EDITOR_TOKEN) {
-    console.warn('  NOTE: EDITOR_TOKEN not set. Editor curation mode is disabled.\n');
-  }
-});
+async function start() {
+  await initDb();
+  curation = await loadCuration();
+  app.listen(PORT, () => {
+    console.log(`\n  Climate Justice Newsfeed running at http://localhost:${PORT}\n`);
+    if (!API_KEY)      console.warn('  WARNING: NEWSAPI_KEY not set. Create a .env file with your key.\n');
+    if (!EDITOR_TOKEN) console.warn('  NOTE: EDITOR_TOKEN not set. Editor curation mode is disabled.\n');
+  });
+}
+
+start().catch(err => { console.error('Failed to start:', err); process.exit(1); });
