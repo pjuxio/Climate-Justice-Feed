@@ -84,6 +84,9 @@ const REGION_TERMS = {
   mena:     '"Middle East" OR MENA OR "North Africa" OR Egypt OR Morocco OR Jordan OR Lebanon OR "Arab world" OR "Gulf states"',
 };
 
+// Domains blocked from appearing in the feed.
+const BLOCKED_DOMAINS = ['freerepublic.com'];
+
 // NewsAPI supports multiple comma-separated languages.
 // For all regions we stay in English; going broader (es, fr, pt, ar) would
 // require translation UI — add as a future enhancement.
@@ -320,6 +323,7 @@ app.get('/api/news', async (req, res) => {
 
     const articles = data.articles
       .filter(a => a.title && a.title !== '[Removed]' && a.url)
+      .filter(a => !BLOCKED_DOMAINS.some(d => a.url.includes(d)))
       .map(normalizeArticle)
       .filter(a => a.url) // discard any articles whose URL failed isSafeUrl
       .map(a => ({ ...a, category: categorize(a) }));
