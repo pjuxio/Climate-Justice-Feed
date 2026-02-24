@@ -137,6 +137,9 @@ function categorize(article) {
   return 'General';
 }
 
+// Trust Heroku's load balancer so express-rate-limit can read the real client IP
+app.set('trust proxy', 1);
+
 // Gzip / deflate all responses
 app.use(compression());
 
