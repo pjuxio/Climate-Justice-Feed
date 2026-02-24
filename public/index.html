@@ -122,6 +122,19 @@
     </div>
   </div>
 
+  <!-- Editor banner — visible only when editor mode is active -->
+  <div id="editor-banner" style="display:none" role="alert" aria-live="polite">
+    <div class="editor-banner-inner">
+      <span class="editor-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Editor Mode
+      </span>
+      <span id="editor-counts" class="editor-counts">Loading…</span>
+      <button id="editor-manage-btn" class="editor-banner-btn">Manage</button>
+      <button id="editor-exit-btn" class="editor-banner-btn editor-banner-btn--exit">Exit</button>
+    </div>
+  </div>
+
   </div><!-- /sticky-stack -->
 
   <!-- Main content -->
@@ -228,6 +241,48 @@
           <p><strong>Top</strong> ranks by article popularity across NewsAPI's index. <strong>Latest</strong> ranks by publish date. The date range controls how far back the search window reaches — from the past 24 hours up to 30 days.</p>
         </section>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- Editor login modal -->
+  <div class="modal-overlay" id="editor-login-overlay" role="dialog" aria-modal="true" aria-labelledby="editor-login-title" style="display:none">
+    <div class="modal editor-login-modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="editor-login-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Editor Login
+        </h2>
+        <button class="modal-close" id="editor-login-close" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" style="gap:14px">
+        <p style="font-size:0.875rem;color:var(--text-secondary);line-height:1.55">Enter your editor token to enable curation controls. Your token is stored for this session only.</p>
+        <input type="password" id="editor-token-input" class="editor-token-input" placeholder="Editor token" autocomplete="current-password" />
+        <p id="editor-login-error" class="editor-login-error" style="display:none"></p>
+        <button id="editor-login-submit" class="retry-btn" style="align-self:flex-start">Enter Editor Mode</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Editor manage modal — shows pinned & hidden articles -->
+  <div class="modal-overlay" id="editor-manage-overlay" role="dialog" aria-modal="true" aria-labelledby="editor-manage-title" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="editor-manage-title">Manage Curation</h2>
+        <button class="modal-close" id="editor-manage-close" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" id="editor-manage-body" style="gap:20px">
+        <!-- Populated by JS -->
       </div>
     </div>
   </div>
