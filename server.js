@@ -68,10 +68,11 @@ setInterval(() => {
   }
 }, CACHE_TTL);
 
-// Core climate justice search terms (kept under ~230 chars so regional AND clauses stay within NewsAPI's 500-char query limit)
+// Core climate justice search terms (kept under ~320 chars so regional AND clauses stay within NewsAPI's 500-char query limit)
 const BASE_QUERY =
   '"climate justice" OR "environmental justice" OR "climate equity" OR "climate racism" OR "just transition" ' +
-  'OR "climate policy" OR "fossil fuels" OR "environmental law" OR "carbon tax" OR "COP29" OR "COP30" OR "COP31" OR "climate summit"';
+  'OR "climate policy" OR "fossil fuels" OR "environmental law" OR "carbon tax" OR "COP29" OR "COP30" OR "COP31" OR "climate summit" ' +
+  'OR "data center permitting" OR "data center approval" OR "data center controversy"';
 
 // Geographic focus terms appended with AND to narrow results by region.
 // null = no regional restriction (global).
