@@ -5,6 +5,8 @@ let activeSortBy  = 'popularity';
 let activeDays    = 7;
 let activeRegion  = 'global';
 let bookmarks = new Set(JSON.parse(localStorage.getItem('cj_bookmarks') || '[]'));
+// true = Editor's picks stay pinned at the top (default); false = interleaved by date
+let pinnedPicksEnabled = localStorage.getItem('cj_picks_pinned') !== 'false';
 
 /* ===== Editor state ===== */
 let isEditorMode = false;
@@ -33,6 +35,7 @@ const themeIconLight = document.getElementById('theme-icon-light');
 const infoBtn        = document.getElementById('info-btn');
 const modalOverlay   = document.getElementById('modal-overlay');
 const modalClose     = document.getElementById('modal-close');
+const picksToggleBtn = document.getElementById('picks-toggle-btn');
 
 /* Editor DOM refs */
 const editorBanner       = document.getElementById('editor-banner');
@@ -263,9 +266,17 @@ function escHtml(str) {
 
 /* ===== Render filtered feed ===== */
 function renderFeed() {
-  const filtered = activeFilter === 'All'
+  let filtered = activeFilter === 'All'
     ? allArticles
     : allArticles.filter(a => a.category === activeFilter);
+
+  // When picks are unpinned, interleave Editor's picks by publishedAt so they
+  // aren't forced to the top — they still display with the "Editor's pick" badge.
+  if (!pinnedPicksEnabled && filtered.some(a => a.pinned)) {
+    filtered = [...filtered].sort((a, b) =>
+      new Date(b.publishedAt) - new Date(a.publishedAt)
+    );
+  }
 
   feed.innerHTML = '';
   errorState.style.display  = 'none';
@@ -713,6 +724,24 @@ function updateArticleCount() {
   const cards = feed.querySelectorAll('.card:not(.card--removing)');
   articleCount.textContent = `${cards.length} article${cards.length !== 1 ? 's' : ''}`;
 }
+
+/* ===== Editor's Picks toggle ===== */
+function applyPicksToggle() {
+  picksToggleBtn.classList.toggle('active', pinnedPicksEnabled);
+  picksToggleBtn.title = pinnedPicksEnabled
+    ? "Editor's picks pinned to top — click to unpin"
+    : "Editor's picks not pinned — click to pin to top";
+}
+
+picksToggleBtn.addEventListener('click', () => {
+  pinnedPicksEnabled = !pinnedPicksEnabled;
+  localStorage.setItem('cj_picks_pinned', pinnedPicksEnabled);
+  applyPicksToggle();
+  renderFeed();
+  showToast(pinnedPicksEnabled ? "Editor's picks pinned to top" : "Editor's picks unpinned");
+});
+
+applyPicksToggle(); // sync button state on load
 
 /* ===== Init ===== */
 fetchNews();
