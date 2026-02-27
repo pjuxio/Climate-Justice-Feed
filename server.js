@@ -1,4 +1,5 @@
 require('dotenv').config();
+const crypto = require('crypto');
 const express = require('express');
 const fetch = require('node-fetch');
 const path = require('path');
@@ -147,8 +148,9 @@ app.set('trust proxy', 1);
 // Gzip / deflate all responses
 app.use(compression());
 
-// Parse JSON bodies (needed for curation POST/DELETE endpoints)
-app.use(express.json());
+// Parse JSON bodies (needed for curation POST/DELETE endpoints).
+// 10 KB limit prevents oversized-payload DoS on curation endpoints.
+app.use(express.json({ limit: '10kb' }));
 
 // Security headers
 app.use((req, res, next) => {
@@ -184,13 +186,18 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
-// Editor auth: validates X-Editor-Token header against EDITOR_TOKEN env var
+// Editor auth: validates X-Editor-Token header against EDITOR_TOKEN env var.
+// Uses crypto.timingSafeEqual to prevent timing-based token enumeration attacks.
 function editorAuth(req, res, next) {
   if (!EDITOR_TOKEN) {
     return res.status(503).json({ error: 'Editor mode is not configured. Set EDITOR_TOKEN in .env.' });
   }
   const token = req.headers['x-editor-token'];
-  if (!token || token !== EDITOR_TOKEN) {
+  if (
+    !token ||
+    token.length !== EDITOR_TOKEN.length ||
+    !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(EDITOR_TOKEN))
+  ) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
@@ -209,7 +216,21 @@ app.use(express.static(path.join(__dirname, 'public'), {
   index: false, // handled explicitly above
 }));
 
+// Structured audit log for every editor mutation (hide/pin/unpin/unhide).
+// Logs to stdout so they appear in Heroku logs and any log-drain integrations.
+function auditLog(req, action, url) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  console.log(JSON.stringify({ audit: true, action, url, ip, ts: new Date().toISOString() }));
+}
+
 // ─── Curation API ─────────────────────────────────────────────────────────────
+
+// Token verification — returns 200 if the token is valid, 401 otherwise.
+// Allows the frontend to confirm credentials without any write side-effects.
+app.get('/api/curation/verify', editorAuth, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true });
+});
 
 // Public: read current curation state (frontend loads this to show badges/counts)
 app.get('/api/curation', (req, res) => {
@@ -221,6 +242,7 @@ app.get('/api/curation', (req, res) => {
 app.post('/api/curation/hide', editorAuth, async (req, res) => {
   const { url } = req.body;
   if (!url || !isSafeUrl(url)) return res.status(400).json({ error: 'Invalid URL' });
+  auditLog(req, 'hide', url);
   if (!curation.hidden.includes(url)) {
     curation.hidden.push(url);
     await saveCuration(curation);
@@ -232,6 +254,7 @@ app.post('/api/curation/hide', editorAuth, async (req, res) => {
 app.delete('/api/curation/hide', editorAuth, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'URL required' });
+  auditLog(req, 'unhide', url);
   curation.hidden = curation.hidden.filter(u => u !== url);
   await saveCuration(curation);
   res.json({ ok: true });
@@ -241,6 +264,7 @@ app.delete('/api/curation/hide', editorAuth, async (req, res) => {
 app.post('/api/curation/pin', editorAuth, async (req, res) => {
   const { url, title, source, author, description, image, publishedAt, readTime, category, note } = req.body;
   if (!url || !isSafeUrl(url)) return res.status(400).json({ error: 'Invalid URL' });
+  auditLog(req, 'pin', url);
   if (!curation.pinned.find(p => p.url === url)) {
     curation.pinned.unshift({
       url,
@@ -249,7 +273,9 @@ app.post('/api/curation/pin', editorAuth, async (req, res) => {
       author: author ? String(author).slice(0, 200) : null,
       description: String(description || '').slice(0, 2000),
       image: image && isSafeUrl(image) ? image : null,
-      publishedAt: publishedAt || new Date().toISOString(),
+      publishedAt: (publishedAt && !isNaN(Date.parse(publishedAt)))
+        ? new Date(publishedAt).toISOString()
+        : new Date().toISOString(),
       readTime: Math.min(Math.max(Number(readTime) || 1, 1), 60),
       category: ['Policy', 'Community', 'Science', 'Environment', 'General'].includes(category)
         ? category : 'General',
@@ -265,6 +291,7 @@ app.post('/api/curation/pin', editorAuth, async (req, res) => {
 app.delete('/api/curation/pin', editorAuth, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'URL required' });
+  auditLog(req, 'unpin', url);
   curation.pinned = curation.pinned.filter(p => p.url !== url);
   await saveCuration(curation);
   res.json({ ok: true });

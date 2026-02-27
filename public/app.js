@@ -534,23 +534,23 @@ async function submitEditorLogin() {
   editorLoginError.style.display = 'none';
 
   try {
-    /* Verify token by attempting a no-op: try to fetch curation with the token */
-    const res = await fetch('/api/curation/hide', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Editor-Token': token },
-      body: JSON.stringify({ url: 'https://verify.test' }), // invalid URL → 400, not 401
+    /* Verify token using the dedicated read-only verification endpoint */
+    const res = await fetch('/api/curation/verify', {
+      headers: { 'X-Editor-Token': token },
     });
 
     if (res.status === 401) {
       editorLoginError.textContent = 'Incorrect token. Try again.';
       editorLoginError.style.display = '';
       editorTokenInput.select();
-    } else {
-      /* 400 (invalid URL) or any non-401 means auth passed */
+    } else if (res.ok) {
       editorToken = token;
       sessionStorage.setItem('cj_editor_token', token);
       closeEditorLogin();
       enterEditorMode();
+    } else {
+      editorLoginError.textContent = 'Server error. Please try again.';
+      editorLoginError.style.display = '';
     }
   } catch {
     editorLoginError.textContent = 'Network error. Please try again.';
