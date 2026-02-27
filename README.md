@@ -1,8 +1,12 @@
 # ClimateJustice.news
 
+[![CI](https://github.com/pjuxio/Climate-Justice-News/actions/workflows/ci.yml/badge.svg)](https://github.com/pjuxio/Climate-Justice-News/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 A real-time climate justice news aggregator with a social media-style card feed. Articles are pulled from [NewsAPI](https://newsapi.org) using a broad set of justice-framing search terms and can be filtered by region, category, sort order, and date range.
 
-**Live:** [climatejustice.news](https://climatejustice.news) · **Repo:** [github.com/pjuxio/Climate-Justice-Feed](https://github.com/pjuxio/Climate-Justice-Feed)
+**Live:** [climatejustice.news](https://climatejustice.news) · **Repo:** [github.com/pjuxio/Climate-Justice-News](https://github.com/pjuxio/Climate-Justice-News) · **Maintainer:** [@pjuxio](https://github.com/pjuxio)
 
 ---
 
@@ -165,3 +169,23 @@ git push heroku main
 |---|---|---|
 | `NEWSAPI_KEY` | Yes | Your NewsAPI.org API key |
 | `PORT` | No | Server port (default: `3000`) |
+| `EDITOR_TOKEN` | No | Secret token enabling editor curation (pin/hide articles) |
+| `DATABASE_URL` | No | PostgreSQL connection string for persistent curation |
+
+---
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) to get started, and review the [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
+
+- Bug reports → [open an issue](https://github.com/pjuxio/Climate-Justice-News/issues/new/choose)
+- Feature requests → [open an issue](https://github.com/pjuxio/Climate-Justice-News/issues/new/choose)
+- Code → fork, branch, PR against `main`
+
+This project is led by [@pjuxio](https://github.com/pjuxio). All PRs are reviewed by the maintainer.
+
+---
+
+## License
+
+[MIT](LICENSE) © pjuxio

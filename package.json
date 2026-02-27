@@ -1,8 +1,18 @@
 {
-  "name": "tclp-climate-justice-newsfeed",
+  "name": "climate-justice-news",
   "version": "1.0.0",
-  "description": "Climate justice news aggregator with social media-style feed",
+  "description": "Open source climate justice news aggregator with a social media-style card feed",
   "main": "server.js",
+  "author": "pjuxio <https://github.com/pjuxio>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pjuxio/Climate-Justice-News.git"
+  },
+  "homepage": "https://climatejustice.news",
+  "bugs": {
+    "url": "https://github.com/pjuxio/Climate-Justice-News/issues"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"

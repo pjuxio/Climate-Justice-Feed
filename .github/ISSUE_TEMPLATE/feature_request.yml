@@ -1,0 +1,48 @@
+name: Feature Request
+description: Propose a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for ClimateJustice.news? Describe it below. Feature requests are reviewed by the project lead.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the problem or limitation you're experiencing.
+      placeholder: I find it frustrating that...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the feature or change you'd like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any alternative approaches you've thought of?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Project area
+      options:
+        - Search / regions
+        - Article filtering
+        - Frontend UI
+        - Performance
+        - Deployment / infrastructure
+        - Documentation
+        - Other
+    validations:
+      required: true
